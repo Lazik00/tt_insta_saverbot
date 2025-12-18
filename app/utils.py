@@ -42,7 +42,7 @@ def _ydl(opts: dict) -> YoutubeDL:
         "noprogress": False,
         "nocheckcertificate": True,
         "concurrent_fragment_downloads": 4,
-        "retries": 10,  # Retries 10 ga ko'paytirildi
+        "retries": 10,
         "fragment_retries": 10,
         "socket_timeout": 60,
         "extractor_retries": 5,
@@ -73,14 +73,11 @@ def _ydl(opts: dict) -> YoutubeDL:
                 "skip_login": False,
             }
         },
-        # Bot detection bypass - COOKIES SOLUTION
-        "cookiesfrombrowser": "chrome",  # Chrome cookies avtomatik olinadi
-        "cookies": None,  # .env dan load qilsa bo'ladi
         # Timing va rate limiting
         "socket_timeout": 60,
         "merge_output_format": "mp4",
-        "sleep_interval": 1,  # Har request orasida 1 sec
-        "sleep_interval_requests": 2,  # Har 2 requestdan keyin extra sleep
+        "sleep_interval": 1,
+        "sleep_interval_requests": 2,
         "sleep_interval_subtitles": 1,
         "rate_limit": None,
         # Format selection optimized
@@ -90,12 +87,8 @@ def _ydl(opts: dict) -> YoutubeDL:
         "prefer_ffmpeg": True,
         "youtube_include_hls_manifest": False,
         "youtube_include_dash_manifest": False,
-        # Client info - YouTube trick
+        # Client info
         "client_version": "2.20240115.00.00",
-        # Instagram specific
-        "instagram": {
-            "check_all": True,
-        },
         # Fallback options
         "ignore_no_formats_error": True,
         "skip_unavailable_fragments": True,

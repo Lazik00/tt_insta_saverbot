@@ -233,7 +233,13 @@ async def handle_format_callback(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ URL topilmadi. Qayta urinib ko'ring.", show_alert=True)
         return
 
-    # Download ni database ga log qilish
+    # Callback javobini darhol berish (timeout xatosini oldini olish)
+    try:
+        await callback.answer()
+    except Exception as e:
+        logger.warning(f"Callback answer failed: {e}")
+
+    # Download logini database ga qo'shish
     download_id = db.log_download(
         callback.from_user.id,
         url,
@@ -241,7 +247,10 @@ async def handle_format_callback(callback: CallbackQuery, state: FSMContext):
         status="processing"
     )
 
-    await callback.message.edit_text("⏳ Yuklab olish boshlandi... Bir oz kuting.")
+    try:
+        await callback.message.edit_text("⏳ Yuklab olish boshlandi... Bir oz kuting.")
+    except Exception as e:
+        logger.warning(f"Message edit failed: {e}")
 
     chat_dir = ensure_chat_dir(callback.message.chat.id)
     video_path: Path | None = None
@@ -274,7 +283,11 @@ async def handle_format_callback(callback: CallbackQuery, state: FSMContext):
     except DownloadError as e:
         logger.exception("Download failed: %s", e)
         db.fail_download(download_id, str(e)[:200])
-        await callback.message.answer(f"❌ Yuklab olish muvaffaqiyatsiz.\n\n{str(e)[:100]}")
+        error_msg = str(e)[:150]
+        if "Sign in to confirm" in error_msg or "rate-limit" in error_msg.lower():
+            await callback.message.answer(f"⚠️ Bot detection yoki rate-limit.\n\nKayni biroz o'yin qilib ko'ring.")
+        else:
+            await callback.message.answer(f"❌ Yuklab olish muvaffaqiyatsiz.\n\n{error_msg}")
     except Exception as e:
         logger.exception("Unexpected error: %s", e)
         db.fail_download(download_id, str(e)[:200])
@@ -288,7 +301,6 @@ async def handle_format_callback(callback: CallbackQuery, state: FSMContext):
 
         db.update_user_activity(callback.from_user.id)
 
-    await callback.answer()
 
 
 async def main() -> None:
