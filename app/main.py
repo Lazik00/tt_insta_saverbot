@@ -54,8 +54,14 @@ async def on_startup() -> None:
     db.init_db()  # Database tables yaratish
     logger.info("✅ Database initialized")
 
-    # Admin IDlar
-    ADMIN_IDS = [5773429637]  # Admin user IDs
+    # Admin IDlarni .env dan o'qish
+    admin_id_str = os.getenv("ADMIN_ID", "5773429637")
+    try:
+        admin_id = int(admin_id_str)
+        ADMIN_IDS = [admin_id]
+    except ValueError:
+        ADMIN_IDS = [5773429637]
+        logger.warning(f"⚠️ ADMIN_ID .env da notog'ri: {admin_id_str}")
 
     # Adminlarni database ga qo'shish
     for admin_id in ADMIN_IDS:
@@ -66,6 +72,8 @@ async def on_startup() -> None:
         elif not user.get('is_admin'):
             db.make_admin(admin_id)
             logger.info(f"✅ {admin_id} admin qilindi")
+            db.make_admin(admin_id)
+            logger.info(f"✅ {admin_id} admin qilindi")
 
 
 async def on_shutdown() -> None:
@@ -73,6 +81,25 @@ async def on_shutdown() -> None:
 
 
 async def handle_start(msg: Message):
+    # Foydalanuvchini database ga qo'shish
+    if not db.get_user(msg.from_user.id):
+        db.add_user(
+            msg.from_user.id,
+            username=msg.from_user.username or "No username",
+            first_name=msg.from_user.first_name or "",
+            last_name=msg.from_user.last_name or "",
+        )
+
+    # Admin tekshiruvi
+    from app.admin import is_admin
+    if is_admin(msg.from_user.id):
+        logger.info(f"👑 Admin {msg.from_user.id} admin panelga redirect qilindi")
+        # Admin panelni avtomatik ochish
+        from app.admin import handle_admin_panel
+        await handle_admin_panel(msg)
+        return
+
+    # Oddiy user uchun welcome message
     text = (
         "🎬 <b>Ko'p Platformali Media Yuklovchi Bot</b>\n\n"
         "Salom! Menga video/audio havolasini yuboring.\n\n"
