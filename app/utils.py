@@ -42,27 +42,24 @@ def _ydl(opts: dict) -> YoutubeDL:
         "noprogress": False,
         "nocheckcertificate": True,
         "concurrent_fragment_downloads": 4,
-        "retries": 15,  # Instagram uchun ko'paytirildi
-        "fragment_retries": 15,
-        "socket_timeout": 60,
-        "extractor_retries": 10,
+        "retries": 20,  # Instagram uchun maksimal
+        "fragment_retries": 20,
+        "socket_timeout": 120,  # 120 sec Instagram uchun
+        "extractor_retries": 15,
         # HTTP Headers - Real browser simulatsiyasi
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Encoding": "gzip, deflate",
             "DNT": "1",
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
             "Cache-Control": "max-age=0",
-            # Instagram specific headers
             "Referer": "https://www.instagram.com/",
             "Origin": "https://www.instagram.com",
             "X-Requested-With": "XMLHttpRequest",
+            "X-Instagram-AJAX": "1",
         },
         # Extractor args - Instagram va YouTube uchun
         "extractor_args": {
@@ -72,41 +69,45 @@ def _ydl(opts: dict) -> YoutubeDL:
                 "player_client": ["web"],
             },
             "instagram": {
-                # Instagram specific options
-                "check_all": True,
-                "download_all": True,
+                # Instagram rate-limit bypass
+                "check_all": False,  # Barcha formatlarni check qilmash
+                "download_all": False,
+                "skip_login": True,  # Login screen'ni skip qilish
+                "no_check_certificates": True,
             }
         },
         # Timing va rate limiting
-        "socket_timeout": 90,  # Instagram uchun 90 sec
+        "socket_timeout": 120,
         "merge_output_format": "mp4",
-        "sleep_interval": 2,  # Instagram uchun ko'paytirildi
-        "sleep_interval_requests": 2,
-        "sleep_interval_subtitles": 1,
+        "sleep_interval": 3,  # Instagram uchun 3 sec
+        "sleep_interval_requests": 3,  # Har 3 so'ngida pause
+        "sleep_interval_subtitles": 2,
         "rate_limit": None,
-        # Format selection
+        # Format selection - INSTAGRAM BYPASS
         "format_sort": ["res", "fps", "codec:h264", "lang", "ext:mp4"],
-        "allow_unplayable_formats": False,
+        "allow_unplayable_formats": True,  # Unplayable ham qabul qilish
         # Video codec
         "prefer_ffmpeg": True,
         "youtube_include_hls_manifest": False,
         "youtube_include_dash_manifest": False,
         # Client info
         "client_version": "2.20240115.00.00",
-        # Fallback options
+        # Fallback options - INSTAGRAM BYPASS
         "ignore_no_formats_error": True,
         "skip_unavailable_fragments": True,
+        "fragments_concurrent_downloads": 1,  # Fragment concurrent downloads kamaytirish
         # Age gate bypass
         "age_limit": None,
-        # Instagram cookies handling
-        "compat_opts": ["prefer_legacy_http_handler"],
-        # HTTP fallback
+        # Instagram specific - BYPASS OPTIONS
+        "compat_opts": ["prefer_legacy_http_handler", "no_youtube_prefer_utc_upload_date"],
         "prefer_insecure": True,
+        "no_check_extensions": True,
+        "allow_unplaylisted_formats": True,
         # Proxy support
         "proxy": None,
     }
 
-    # Proxy qo'llang agar mavjud bo'lsa
+    # ...existing code...
     proxy = get_random_proxy()
     if proxy:
         base["proxy"] = proxy
@@ -243,20 +244,26 @@ async def download_video_and_audio(url: str, chat_id: int, format_type: str = "b
             except Exception as e:
                 error_msg = str(e).lower()
 
+                # Instagram rate-limit specific handling
+                if is_instagram and "requested content is not available" in error_msg and "rate-limit" in error_msg:
+                    if attempt == max_retries - 1:
+                        print(f"❌ Instagram rate-limit - maksimal retries tugadi")
+                        raise
+                    # Exponential backoff: 5s, 15s, 30s, 60s, 120s
+                    wait_times = [5, 15, 30, 60, 120]
+                    wait_time = wait_times[min(attempt, len(wait_times)-1)]
+                    print(f"⏳ Instagram rate-limit detected. Waiting {wait_time}s (attempt {attempt+1}/{max_retries})...")
+                    await asyncio.sleep(wait_time)
+                    continue
+
                 # Instagram specific - CSRF token va metadata xatolarini ignore qilish
                 if is_instagram and any(err in error_msg for err in ["csrf token", "no data", "general metadata", "unable to extract"]):
-                    if "requested content is not available" in error_msg or "rate-limit reached" in error_msg:
-                        if attempt == max_retries - 1:
-                            raise
-                        wait_time = (attempt + 1) * 5
-                        print(f"⏳ Instagram rate-limit/unavailable. Waiting {wait_time}s...")
-                        await asyncio.sleep(wait_time)
+                    if attempt < max_retries - 1:
+                        print(f"⚠️ Instagram metadata warning (retry): {error_msg[:80]}")
+                        await asyncio.sleep(2)
+                        continue
                     else:
-                        # CSRF token va metadata xatolarini ignore qilish (warning o'qib tashlab davom etish)
-                        print(f"⚠️ Instagram metadata warning (davom etilmoqda): {error_msg[:80]}")
-                        if attempt < max_retries - 1:
-                            await asyncio.sleep(1)
-                            continue
+                        raise
 
                 # Rate-limit va bot detection uchun smart retry
                 if "rate-limit" in error_msg or "sign in to confirm" in error_msg:
