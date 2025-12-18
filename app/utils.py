@@ -38,18 +38,18 @@ def get_random_proxy() -> Optional[str]:
 
 def _ydl(opts: dict) -> YoutubeDL:
     base = {
-        "quiet": False,  # DEBUG uchun ON
+        "quiet": False,
         "noprogress": False,
         "nocheckcertificate": True,
         "concurrent_fragment_downloads": 4,
-        "retries": 10,
-        "fragment_retries": 10,
+        "retries": 15,  # Instagram uchun ko'paytirildi
+        "fragment_retries": 15,
         "socket_timeout": 60,
-        "extractor_retries": 5,
+        "extractor_retries": 10,
         # HTTP Headers - Real browser simulatsiyasi
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip, deflate, br",
             "DNT": "1",
@@ -59,10 +59,12 @@ def _ydl(opts: dict) -> YoutubeDL:
             "Sec-Fetch-Mode": "navigate",
             "Sec-Fetch-Site": "none",
             "Cache-Control": "max-age=0",
-            "Referer": "https://www.youtube.com/",
-            "Origin": "https://www.youtube.com",
+            # Instagram specific headers
+            "Referer": "https://www.instagram.com/",
+            "Origin": "https://www.instagram.com",
+            "X-Requested-With": "XMLHttpRequest",
         },
-        # YouTube specific extractor args
+        # Extractor args - Instagram va YouTube uchun
         "extractor_args": {
             "youtube": {
                 "skip": ["hls", "dash", "translated_subs"],
@@ -70,20 +72,22 @@ def _ydl(opts: dict) -> YoutubeDL:
                 "player_client": ["web"],
             },
             "instagram": {
-                "skip_login": False,
+                # Instagram specific options
+                "check_all": True,
+                "download_all": True,
             }
         },
         # Timing va rate limiting
-        "socket_timeout": 60,
+        "socket_timeout": 90,  # Instagram uchun 90 sec
         "merge_output_format": "mp4",
-        "sleep_interval": 1,
+        "sleep_interval": 2,  # Instagram uchun ko'paytirildi
         "sleep_interval_requests": 2,
         "sleep_interval_subtitles": 1,
         "rate_limit": None,
-        # Format selection optimized
+        # Format selection
         "format_sort": ["res", "fps", "codec:h264", "lang", "ext:mp4"],
         "allow_unplayable_formats": False,
-        # Video codec preferences
+        # Video codec
         "prefer_ffmpeg": True,
         "youtube_include_hls_manifest": False,
         "youtube_include_dash_manifest": False,
@@ -94,11 +98,21 @@ def _ydl(opts: dict) -> YoutubeDL:
         "skip_unavailable_fragments": True,
         # Age gate bypass
         "age_limit": None,
+        # Instagram cookies handling
+        "compat_opts": ["prefer_legacy_http_handler"],
+        # HTTP fallback
+        "prefer_insecure": True,
         # Proxy support
         "proxy": None,
     }
 
     # Proxy qo'llang agar mavjud bo'lsa
+    proxy = get_random_proxy()
+    if proxy:
+        base["proxy"] = proxy
+
+    base.update(opts)
+    return YoutubeDL(base)
     proxy = get_random_proxy()
     if proxy:
         base["proxy"] = proxy
@@ -228,10 +242,27 @@ async def download_video_and_audio(url: str, chat_id: int, format_type: str = "b
 
             except Exception as e:
                 error_msg = str(e).lower()
+
+                # Instagram specific - CSRF token va metadata xatolarini ignore qilish
+                if is_instagram and any(err in error_msg for err in ["csrf token", "no data", "general metadata", "unable to extract"]):
+                    if "requested content is not available" in error_msg or "rate-limit reached" in error_msg:
+                        if attempt == max_retries - 1:
+                            raise
+                        wait_time = (attempt + 1) * 5
+                        print(f"⏳ Instagram rate-limit/unavailable. Waiting {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        # CSRF token va metadata xatolarini ignore qilish (warning o'qib tashlab davom etish)
+                        print(f"⚠️ Instagram metadata warning (davom etilmoqda): {error_msg[:80]}")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1)
+                            continue
+
+                # Rate-limit va bot detection uchun smart retry
                 if "rate-limit" in error_msg or "sign in to confirm" in error_msg:
                     if attempt == max_retries - 1:
                         raise
-                    wait_time = (attempt + 1) * 5  # 5, 10, 15, 20, 25 seconds
+                    wait_time = (attempt + 1) * 5
                     print(f"⏳ Rate limit/Bot detection. Waiting {wait_time}s before retry...")
                     await asyncio.sleep(wait_time)
                 elif attempt == max_retries - 1:
