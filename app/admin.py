@@ -42,105 +42,137 @@ async def admin_only(msg: Message) -> bool:
 @admin_router.message(Command("admin"))
 async def handle_admin_panel(msg: Message):
     """Admin panelni ochish"""
-    if not await admin_only(msg):
-        return
+    try:
+        logger.info(f"👑 Admin panel request from {msg.from_user.id}")
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users"),
-            InlineKeyboardButton(text="📊 Statistika", callback_data="admin_stats"),
-        ],
-        [
-            InlineKeyboardButton(text="📢 Broadcast", callback_data="admin_broadcast"),
-            InlineKeyboardButton(text="🚫 Ban qilish", callback_data="admin_ban"),
-        ],
-        [
-            InlineKeyboardButton(text="✅ Unban qilish", callback_data="admin_unban"),
-            InlineKeyboardButton(text="👑 Admin qilish", callback_data="admin_make_admin"),
-        ],
-        [
-            InlineKeyboardButton(text="📝 Admin loggari", callback_data="admin_logs"),
-            InlineKeyboardButton(text="📬 Bildirishnomalar", callback_data="admin_notifications"),
-        ],
-        [
-            InlineKeyboardButton(text="⚙️ Sozlamalar", callback_data="admin_settings"),
-            InlineKeyboardButton(text="🔄 Bot status", callback_data="admin_status"),
-        ],
-    ])
+        # Admin tekshiruvi
+        if not is_admin(msg.from_user.id):
+            logger.warning(f"❌ Non-admin tried /admin: {msg.from_user.id}")
+            await msg.reply("❌ Siz admin emassiz!")
+            return
 
-    text = (
-        "<b>👑 Admin Panel</b>\n\n"
-        "Quyidagi amallarni tanlang:"
-    )
+        logger.info(f"✅ Admin verified: {msg.from_user.id}")
 
-    await msg.answer(text, reply_markup=keyboard)
-    db.log_admin_action(msg.from_user.id, "admin_panel_opened")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users"),
+                InlineKeyboardButton(text="📊 Statistika", callback_data="admin_stats"),
+            ],
+            [
+                InlineKeyboardButton(text="📢 Broadcast", callback_data="admin_broadcast"),
+                InlineKeyboardButton(text="🚫 Ban qilish", callback_data="admin_ban"),
+            ],
+            [
+                InlineKeyboardButton(text="✅ Unban qilish", callback_data="admin_unban"),
+                InlineKeyboardButton(text="👑 Admin qilish", callback_data="admin_make_admin"),
+            ],
+            [
+                InlineKeyboardButton(text="📝 Admin loggari", callback_data="admin_logs"),
+                InlineKeyboardButton(text="📬 Bildirishnomalar", callback_data="admin_notifications"),
+            ],
+            [
+                InlineKeyboardButton(text="⚙️ Sozlamalar", callback_data="admin_settings"),
+                InlineKeyboardButton(text="🔄 Bot status", callback_data="admin_status"),
+            ],
+        ])
+
+        text = (
+            "<b>👑 Admin Panel</b>\n\n"
+            "Quyidagi amallarni tanlang:"
+        )
+
+        await msg.answer(text, reply_markup=keyboard)
+        logger.info(f"✅ Admin panel opened for {msg.from_user.id}")
+
+        db.log_admin_action(msg.from_user.id, "admin_panel_opened")
+
+    except Exception as e:
+        logger.error(f"❌ Admin panel error: {e}", exc_info=True)
+        await msg.answer(f"❌ Xatolik: {str(e)[:100]}")
 
 
 @admin_router.callback_query(F.data == "admin_users")
 async def show_users(callback: CallbackQuery):
     """Foydalanuvchilarni ko'rish"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Admin emas!", show_alert=True)
-        return
+    try:
+        logger.info(f"Admin users query from {callback.from_user.id}")
 
-    users = db.get_all_users()
-    admin_users = [u for u in users if u['is_admin']]
-    banned_users = [u for u in users if u['is_banned']]
+        if not is_admin(callback.from_user.id):
+            logger.warning(f"Non-admin tried admin_users: {callback.from_user.id}")
+            await callback.answer("❌ Admin emas!", show_alert=True)
+            return
 
-    text = (
-        f"<b>👥 Foydalanuvchilar Statistikasi</b>\n\n"
-        f"📊 <b>Jami:</b> {len(users)}\n"
-        f"👑 <b>Adminlar:</b> {len(admin_users)}\n"
-        f"🚫 <b>Banlanganlar:</b> {len(banned_users)}\n"
-        f"✅ <b>Faol:</b> {len([u for u in users if not u['is_banned']])}\n\n"
-    )
+        users = db.get_all_users()
+        admin_users = [u for u in users if u['is_admin']]
+        banned_users = [u for u in users if u['is_banned']]
 
-    # Top users
-    top_users = sorted(users, key=lambda x: x['downloads_count'], reverse=True)[:5]
-    text += "<b>🏆 Top 5 Foydalanuvchi:</b>\n"
-    for i, user in enumerate(top_users, 1):
-        text += f"{i}. `{user['user_id']}` - {user['downloads_count']} downloads\n"
+        text = (
+            f"<b>👥 Foydalanuvchilar Statistikasi</b>\n\n"
+            f"📊 <b>Jami:</b> {len(users)}\n"
+            f"👑 <b>Adminlar:</b> {len(admin_users)}\n"
+            f"🚫 <b>Banlanganlar:</b> {len(banned_users)}\n"
+            f"✅ <b>Faol:</b> {len([u for u in users if not u['is_banned']])}\n\n"
+        )
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Orqaga", callback_data="admin_back")],
-    ])
+        # Top users
+        top_users = sorted(users, key=lambda x: x['downloads_count'], reverse=True)[:5]
+        text += "<b>🏆 Top 5 Foydalanuvchi:</b>\n"
+        for i, user in enumerate(top_users, 1):
+            text += f"{i}. `{user['user_id']}` - {user['downloads_count']} downloads\n"
 
-    await callback.message.edit_text(text, reply_markup=keyboard)
-    await callback.answer()
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Orqaga", callback_data="admin_back")],
+        ])
+
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.answer()
+        logger.info(f"✅ Users list shown to {callback.from_user.id}")
+
+    except Exception as e:
+        logger.error(f"❌ Error showing users: {e}", exc_info=True)
+        await callback.answer(f"Xatolik: {str(e)[:50]}", show_alert=True)
 
 
 @admin_router.callback_query(F.data == "admin_stats")
 async def show_stats(callback: CallbackQuery):
     """Statistikani ko'rish"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Admin emas!", show_alert=True)
-        return
+    try:
+        logger.info(f"Admin stats query from {callback.from_user.id}")
 
-    stats = db.get_statistics()
+        if not is_admin(callback.from_user.id):
+            logger.warning(f"Non-admin tried admin_stats: {callback.from_user.id}")
+            await callback.answer("❌ Admin emas!", show_alert=True)
+            return
 
-    success_rate = 0
-    if stats['successful_downloads'] + stats['failed_downloads'] > 0:
-        success_rate = (stats['successful_downloads'] /
-                       (stats['successful_downloads'] + stats['failed_downloads']) * 100)
+        stats = db.get_statistics()
 
-    text = (
-        "<b>📊 Bot Statistikasi</b>\n\n"
-        f"👥 <b>Jami foydalanuvchilar:</b> {stats['total_users']}\n"
-        f"⚡ <b>Faol (24h):</b> {stats['active_users']}\n\n"
-        f"✅ <b>Muvaffaqiyatli yuklab olish:</b> {stats['successful_downloads']}\n"
-        f"❌ <b>Muvaffaqiyatsiz:</b> {stats['failed_downloads']}\n"
-        f"📈 <b>Muvaffaqiyat darajasi:</b> {success_rate:.1f}%\n\n"
-        f"💾 <b>Jami storage:</b> {stats['total_storage_used'] / (1024*1024):.1f} MB\n"
-        f"⏱️ <b>Avg download time:</b> {stats['avg_download_time']:.1f} sec\n"
-    )
+        success_rate = 0
+        if stats['successful_downloads'] + stats['failed_downloads'] > 0:
+            success_rate = (stats['successful_downloads'] /
+                           (stats['successful_downloads'] + stats['failed_downloads']) * 100)
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Orqaga", callback_data="admin_back")],
-    ])
+        text = (
+            "<b>📊 Bot Statistikasi</b>\n\n"
+            f"👥 <b>Jami foydalanuvchilar:</b> {stats['total_users']}\n"
+            f"⚡ <b>Faol (24h):</b> {stats['active_users']}\n\n"
+            f"✅ <b>Muvaffaqiyatli yuklab olish:</b> {stats['successful_downloads']}\n"
+            f"❌ <b>Muvaffaqiyatsiz:</b> {stats['failed_downloads']}\n"
+            f"📈 <b>Muvaffaqiyat darajasi:</b> {success_rate:.1f}%\n\n"
+            f"💾 <b>Jami storage:</b> {stats['total_storage_used'] / (1024*1024):.1f} MB\n"
+            f"⏱️ <b>Avg download time:</b> {stats['avg_download_time']:.1f} sec\n"
+        )
 
-    await callback.message.edit_text(text, reply_markup=keyboard)
-    await callback.answer()
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Orqaga", callback_data="admin_back")],
+        ])
+
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.answer()
+        logger.info(f"✅ Stats shown to {callback.from_user.id}")
+
+    except Exception as e:
+        logger.error(f"❌ Error showing stats: {e}", exc_info=True)
+        await callback.answer(f"Xatolik: {str(e)[:50]}", show_alert=True)
 
 
 @admin_router.callback_query(F.data == "admin_broadcast")
@@ -476,12 +508,19 @@ async def show_bot_status(callback: CallbackQuery):
 @admin_router.callback_query(F.data == "admin_back")
 async def go_back(callback: CallbackQuery):
     """Orqaga qaytish"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Admin emas!", show_alert=True)
-        return
+    try:
+        logger.info(f"Back to admin menu from {callback.from_user.id}")
 
-    await handle_admin_panel(callback.message)
-    await callback.answer()
+        if not is_admin(callback.from_user.id):
+            await callback.answer("❌ Admin emas!", show_alert=True)
+            return
+
+        await handle_admin_panel(callback.message)
+        await callback.answer()
+
+    except Exception as e:
+        logger.error(f"❌ Error going back: {e}", exc_info=True)
+        await callback.answer(f"Xatolik: {str(e)[:50]}", show_alert=True)
 
 
 @admin_router.callback_query(F.data == "admin_settings")
