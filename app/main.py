@@ -51,6 +51,19 @@ async def on_startup() -> None:
     db.init_db()  # Database tables yaratish
     logger.info("✅ Database initialized")
 
+    # Admin IDlar
+    ADMIN_IDS = [5773429637]  # Admin user IDs
+
+    # Adminlarni database ga qo'shish
+    for admin_id in ADMIN_IDS:
+        user = db.get_user(admin_id)
+        if not user:
+            db.add_user(admin_id, username="admin", first_name="Admin", is_admin=True)
+            logger.info(f"✅ Admin qo'shildi: {admin_id}")
+        elif not user.get('is_admin'):
+            db.make_admin(admin_id)
+            logger.info(f"✅ {admin_id} admin qilindi")
+
 
 async def on_shutdown() -> None:
     logger.info("Bot stopped")
@@ -135,6 +148,10 @@ async def handle_formats(msg: Message):
 
 async def handle_link(msg: Message, state: FSMContext):
     url = (msg.text or "").strip()
+
+    # Komandalar bo'lmasa, URL sifatida qayta ishlash
+    if url.startswith("/"):
+        return  # Komandalar uchun xalqaro handlers ishlatiladi
 
     # Foydalanuvchini database ga qo'shish/yangilash
     if not db.get_user(msg.from_user.id):
@@ -247,17 +264,19 @@ async def handle_format_callback(callback: CallbackQuery, state: FSMContext):
 async def main() -> None:
     dp = Dispatcher()
 
-    # Routers qo'shish
-    dp.include_router(admin_router)
-    dp.include_router(logger_router)
-
-    # Commands
+    # Commands (BIRINCHI - highest priority)
     dp.message.register(handle_start, CommandStart())
     dp.message.register(handle_help, Command("help"))
     dp.message.register(handle_formats, Command("formats"))
 
-    # Callbacks and messages
+    # Routers (admin va user panel)
+    dp.include_router(admin_router)
+    dp.include_router(logger_router)
+
+    # Callbacks
     dp.callback_query.register(handle_format_callback, F.data.startswith("format_"))
+
+    # Generic text handler (OXIRIDA - lowest priority)
     dp.message.register(handle_link, F.text)
 
     await on_startup()
