@@ -43,15 +43,19 @@ async def admin_only(msg: Message) -> bool:
 async def handle_admin_panel(msg: Message):
     """Admin panelni ochish"""
     try:
-        logger.info(f"👑 Admin panel request from {msg.from_user.id}")
+        user_id = msg.from_user.id
+        logger.info(f"👑 Admin panel request from {user_id} (@{msg.from_user.username})")
 
         # Admin tekshiruvi
-        if not is_admin(msg.from_user.id):
-            logger.warning(f"❌ Non-admin tried /admin: {msg.from_user.id}")
+        admin_check = is_admin(user_id)
+        logger.debug(f"   is_admin({user_id}) = {admin_check}")
+
+        if not admin_check:
+            logger.warning(f"❌ Non-admin tried /admin: {user_id} (@{msg.from_user.username})")
             await msg.reply("❌ Siz admin emassiz!")
             return
 
-        logger.info(f"✅ Admin verified: {msg.from_user.id}")
+        logger.info(f"✅ Admin verified: {user_id}")
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
@@ -82,9 +86,9 @@ async def handle_admin_panel(msg: Message):
         )
 
         await msg.answer(text, reply_markup=keyboard)
-        logger.info(f"✅ Admin panel opened for {msg.from_user.id}")
+        logger.info(f"✅ Admin panel opened for {user_id}")
 
-        db.log_admin_action(msg.from_user.id, "admin_panel_opened")
+        db.log_admin_action(user_id, "admin_panel_opened")
 
     except Exception as e:
         logger.error(f"❌ Admin panel error: {e}", exc_info=True)
@@ -95,10 +99,13 @@ async def handle_admin_panel(msg: Message):
 async def show_users(callback: CallbackQuery):
     """Foydalanuvchilarni ko'rish"""
     try:
-        logger.info(f"Admin users query from {callback.from_user.id}")
+        user_id = callback.from_user.id
+        logger.info(f"Admin users query from {user_id} (@{callback.from_user.username})")
+        logger.debug(f"   Callback user: {callback.from_user}")
+        logger.debug(f"   is_admin({user_id}) = {is_admin(user_id)}")
 
-        if not is_admin(callback.from_user.id):
-            logger.warning(f"Non-admin tried admin_users: {callback.from_user.id}")
+        if not is_admin(user_id):
+            logger.warning(f"Non-admin tried admin_users: {user_id}")
             await callback.answer("❌ Admin emas!", show_alert=True)
             return
 
@@ -126,7 +133,7 @@ async def show_users(callback: CallbackQuery):
 
         await callback.message.edit_text(text, reply_markup=keyboard)
         await callback.answer()
-        logger.info(f"✅ Users list shown to {callback.from_user.id}")
+        logger.info(f"✅ Users list shown to {user_id}")
 
     except Exception as e:
         logger.error(f"❌ Error showing users: {e}", exc_info=True)
@@ -137,10 +144,11 @@ async def show_users(callback: CallbackQuery):
 async def show_stats(callback: CallbackQuery):
     """Statistikani ko'rish"""
     try:
-        logger.info(f"Admin stats query from {callback.from_user.id}")
+        user_id = callback.from_user.id
+        logger.info(f"Admin stats query from {user_id}")
 
-        if not is_admin(callback.from_user.id):
-            logger.warning(f"Non-admin tried admin_stats: {callback.from_user.id}")
+        if not is_admin(user_id):
+            logger.warning(f"Non-admin tried admin_stats: {user_id}")
             await callback.answer("❌ Admin emas!", show_alert=True)
             return
 
@@ -168,7 +176,7 @@ async def show_stats(callback: CallbackQuery):
 
         await callback.message.edit_text(text, reply_markup=keyboard)
         await callback.answer()
-        logger.info(f"✅ Stats shown to {callback.from_user.id}")
+        logger.info(f"✅ Stats shown to {user_id}")
 
     except Exception as e:
         logger.error(f"❌ Error showing stats: {e}", exc_info=True)
@@ -483,40 +491,82 @@ async def process_notification(msg: Message, state: FSMContext):
 @admin_router.callback_query(F.data == "admin_status")
 async def show_bot_status(callback: CallbackQuery):
     """Bot statusi"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Admin emas!", show_alert=True)
-        return
+    try:
+        user_id = callback.from_user.id
+        logger.info(f"Admin status query from {user_id}")
 
-    stats = db.get_statistics()
+        if not is_admin(user_id):
+            logger.warning(f"Non-admin tried admin_status: {user_id}")
+            await callback.answer("❌ Admin emas!", show_alert=True)
+            return
 
-    text = (
-        "<b>🤖 Bot Status</b>\n\n"
-        f"✅ <b>Status:</b> Online\n"
-        f"👥 <b>Active users:</b> {stats['active_users']}\n"
-        f"📊 <b>Total users:</b> {stats['total_users']}\n"
-        f"📈 <b>Downloads:</b> {stats['successful_downloads']}\n"
-    )
+        stats = db.get_statistics()
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Orqaga", callback_data="admin_back")],
-    ])
+        text = (
+            "<b>🤖 Bot Status</b>\n\n"
+            f"✅ <b>Status:</b> Online\n"
+            f"👥 <b>Active users:</b> {stats['active_users']}\n"
+            f"📊 <b>Total users:</b> {stats['total_users']}\n"
+            f"📈 <b>Downloads:</b> {stats['successful_downloads']}\n"
+        )
 
-    await callback.message.edit_text(text, reply_markup=keyboard)
-    await callback.answer()
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Orqaga", callback_data="admin_back")],
+        ])
+
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.answer()
+        logger.info(f"✅ Status shown to {user_id}")
+
+    except Exception as e:
+        logger.error(f"❌ Error showing status: {e}", exc_info=True)
+        await callback.answer(f"Xatolik: {str(e)[:50]}", show_alert=True)
 
 
 @admin_router.callback_query(F.data == "admin_back")
 async def go_back(callback: CallbackQuery):
     """Orqaga qaytish"""
     try:
-        logger.info(f"Back to admin menu from {callback.from_user.id}")
+        user_id = callback.from_user.id
+        logger.info(f"Back to admin menu from {user_id}")
 
-        if not is_admin(callback.from_user.id):
+        if not is_admin(user_id):
+            logger.warning(f"Non-admin tried admin_back: {user_id}")
             await callback.answer("❌ Admin emas!", show_alert=True)
             return
 
-        await handle_admin_panel(callback.message)
+        # Message o'rniga user info sini o'tkazish uchun, direct buttons yuborish
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin_users"),
+                InlineKeyboardButton(text="📊 Statistika", callback_data="admin_stats"),
+            ],
+            [
+                InlineKeyboardButton(text="📢 Broadcast", callback_data="admin_broadcast"),
+                InlineKeyboardButton(text="🚫 Ban qilish", callback_data="admin_ban"),
+            ],
+            [
+                InlineKeyboardButton(text="✅ Unban qilish", callback_data="admin_unban"),
+                InlineKeyboardButton(text="👑 Admin qilish", callback_data="admin_make_admin"),
+            ],
+            [
+                InlineKeyboardButton(text="📝 Admin loggari", callback_data="admin_logs"),
+                InlineKeyboardButton(text="📬 Bildirishnomalar", callback_data="admin_notifications"),
+            ],
+            [
+                InlineKeyboardButton(text="⚙️ Sozlamalar", callback_data="admin_settings"),
+                InlineKeyboardButton(text="🔄 Bot status", callback_data="admin_status"),
+            ],
+        ])
+
+        text = (
+            "<b>👑 Admin Panel</b>\n\n"
+            "Quyidagi amallarni tanlang:"
+        )
+
+        await callback.message.edit_text(text, reply_markup=keyboard)
         await callback.answer()
+        logger.info(f"✅ Back to admin panel for {user_id}")
 
     except Exception as e:
         logger.error(f"❌ Error going back: {e}", exc_info=True)
