@@ -7,6 +7,9 @@ SUPPORTED_DOMAINS = {
     "vt.tiktok.com",
     "instagram.com",
     "www.instagram.com",
+    "youtube.com",
+    "www.youtube.com",
+    "youtu.be",
 }
 
 

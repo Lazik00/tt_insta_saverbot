@@ -15,6 +15,8 @@ from aiogram.client.default import DefaultBotProperties
 
 from app.utils import download_video_and_audio, cleanup_dir, ensure_chat_dir, DownloadError
 from app.validators import is_supported_url
+from app.database import init_db, add_user, add_download, get_user_download_count, is_premium
+from app.admin import admin_router
 
 load_dotenv()
 
@@ -35,6 +37,8 @@ bot = Bot(
 
 async def on_startup() -> None:
     logger.info("Bot started")
+    await init_db()
+    logger.info("Database initialized")
 
 
 async def on_shutdown() -> None:
@@ -43,21 +47,34 @@ async def on_shutdown() -> None:
 
 async def handle_start(msg: Message):
     text = (
-        "Salom! Menga TikTok yoki Instagram (Reels) link yuboring — \n"
-        "men esa sizga <b>video MP4</b> va alohida <b>audio MP3</b> qilib yuboraman.\n\n"
-        "Masalan: \n"
-        f"• {hlink('TikTok namunasi', 'https://www.tiktok.com/@scout2015/video/6718335390845095173')}\n"
-        f"• {hlink('Instagram Reels namunasi', 'https://www.instagram.com/reel/Cx1234567/')}\n\n"
+        "👋 <b>Salom!</b>\n\n"
+        "Menga quyidagi manbalardan havolalar yuboring:\n"
+        "• TikTok\n"
+        "• Instagram Reels\n"
+        "• YouTube Videolar\n\n"
+        "Men esa sizga <b>video MP4</b> va alohida <b>audio MP3</b> qilib yuboraman.\n\n"
+        "📹 <b>Misollar:</b>\n"
+        f"• {hlink('TikTok', 'https://www.tiktok.com')}\n"
+        f"• {hlink('Instagram Reels', 'https://www.instagram.com')}\n"
+        f"• {hlink('YouTube', 'https://www.youtube.com')}\n\n"
         "⚖️ Faqat o'zingizga tegishli yoki ruxsat etilgan kontentni yuklab oling."
     )
+
+    await add_user(msg.from_user.id, msg.from_user.username)
     await msg.answer(text, disable_web_page_preview=True)
 
 
 async def handle_link(msg: Message):
     url = (msg.text or "").strip()
     if not is_supported_url(url):
-        await msg.reply("❌ Link noto'g'ri yoki qo'llab-quvvatlanmaydi. TikTok/Instagram havolasini yuboring.")
+        await msg.reply("❌ Link noto'g'ri yoki qo'llab-quvvatlanmaydi. TikTok/Instagram/YouTube havolasini yuboring.")
         return
+
+    user_id = msg.from_user.id
+    download_count = await get_user_download_count(user_id)
+
+    # Premium users get faster service (no ads/delays)
+    user_premium = await is_premium(user_id)
 
     await msg.answer("⏳ Yuklab olish va audio ajratish boshlandi… Bir oz kuting.")
 
@@ -67,6 +84,9 @@ async def handle_link(msg: Message):
 
     try:
         video_path, audio_path, title = await download_video_and_audio(url, msg.chat.id)
+
+        # Log download
+        await add_download(user_id, url)
 
         # Size guard if configured
         if MAX_UPLOAD_BYTES and video_path.stat().st_size > MAX_UPLOAD_BYTES:
@@ -98,12 +118,13 @@ async def handle_link(msg: Message):
 
 async def main() -> None:
     dp = Dispatcher()
+    dp.include_router(admin_router)
     dp.message.register(handle_start, CommandStart())
     dp.message.register(handle_link, F.text)
 
     await on_startup()
     try:
-        await dp.start_polling(bot, allowed_updates=["message"])
+        await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
     finally:
         await bot.session.close()
         await on_shutdown()

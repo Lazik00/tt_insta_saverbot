@@ -3,6 +3,6 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.10 (tt_insta_saverbot)" />
   </component>
-  <component name="KubernetesApiProvider"><![CDATA[{}]]></component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.10 (tt_insta_saverbot)" project-jdk-type="Python SDK" />
+  <component name="KubernetesApiProvider">{}</component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.10 virtualenv at C:\Users\Laziz\PycharmProjects\tt_insta_saverbot\venv" project-jdk-type="Python SDK" />
 </project>
