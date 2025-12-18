@@ -41,27 +41,30 @@ def _ydl(opts: dict) -> YoutubeDL:
         "quiet": False,
         "noprogress": False,
         "nocheckcertificate": True,
-        "concurrent_fragment_downloads": 4,
-        "retries": 20,  # Instagram uchun maksimal
-        "fragment_retries": 20,
-        "socket_timeout": 120,  # 120 sec Instagram uchun
-        "extractor_retries": 15,
-        # HTTP Headers - Real browser simulatsiyasi
+        "concurrent_fragment_downloads": 1,  # Sequential downloads (less detection)
+        "retries": 25,  # Instagram uchun MAKSIMAL
+        "fragment_retries": 25,
+        "socket_timeout": 150,  # 150 sec Instagram uchun
+        "extractor_retries": 20,
+        "youtube_include_dash_manifest": False,
+        "youtube_include_hls_manifest": False,
+        # HTTP Headers - INSTAGRAM BYPASS
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            # iPhone 14 Pro iOS 17 - Latest real device
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip, deflate",
             "DNT": "1",
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
-            "Cache-Control": "max-age=0",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
             "Referer": "https://www.instagram.com/",
             "Origin": "https://www.instagram.com",
             "X-Requested-With": "XMLHttpRequest",
-            "X-Instagram-AJAX": "1",
         },
-        # Extractor args - Instagram va YouTube uchun
+        # Extractor args
         "extractor_args": {
             "youtube": {
                 "skip": ["hls", "dash", "translated_subs"],
@@ -69,40 +72,34 @@ def _ydl(opts: dict) -> YoutubeDL:
                 "player_client": ["web"],
             },
             "instagram": {
-                # Instagram rate-limit bypass
-                "check_all": False,  # Barcha formatlarni check qilmash
-                "download_all": False,
-                "skip_login": True,  # Login screen'ni skip qilish
-                "no_check_certificates": True,
+                # Instagram BYPASS settings
+                "skip_login": True,
+                "check_all": False,
             }
         },
-        # Timing va rate limiting
-        "socket_timeout": 120,
+        # Timing
+        "socket_timeout": 150,
         "merge_output_format": "mp4",
-        "sleep_interval": 3,  # Instagram uchun 3 sec
-        "sleep_interval_requests": 3,  # Har 3 so'ngida pause
+        "sleep_interval": 5,  # 5 sec Instagram uchun
+        "sleep_interval_requests": 3,
         "sleep_interval_subtitles": 2,
         "rate_limit": None,
-        # Format selection - INSTAGRAM BYPASS
+        # Format selection - NO UNPLAYABLE!
         "format_sort": ["res", "fps", "codec:h264", "lang", "ext:mp4"],
-        "allow_unplayable_formats": True,  # Unplayable ham qabul qilish
+        "allow_unplayable_formats": False,  # FIXED: O'chirildi!
+        "format": "best[ext=mp4]/best",  # Instagram-specific format
         # Video codec
         "prefer_ffmpeg": True,
-        "youtube_include_hls_manifest": False,
-        "youtube_include_dash_manifest": False,
-        # Client info
-        "client_version": "2.20240115.00.00",
-        # Fallback options - INSTAGRAM BYPASS
+        # Fallback options
         "ignore_no_formats_error": True,
         "skip_unavailable_fragments": True,
-        "fragments_concurrent_downloads": 1,  # Fragment concurrent downloads kamaytirish
+        "fragments_concurrent_downloads": 1,
         # Age gate bypass
         "age_limit": None,
-        # Instagram specific - BYPASS OPTIONS
-        "compat_opts": ["prefer_legacy_http_handler", "no_youtube_prefer_utc_upload_date"],
+        # Compat options
+        "compat_opts": ["prefer_legacy_http_handler"],
         "prefer_insecure": True,
         "no_check_extensions": True,
-        "allow_unplaylisted_formats": True,
         # Proxy support
         "proxy": None,
     }
@@ -169,12 +166,11 @@ async def download_video_and_audio(url: str, chat_id: int, format_type: str = "b
                     # Download video
                     ydl_video_opts = {
                         "outtmpl": str(video_path.with_suffix(".%(ext)s")),
-                        "format": "bv*+ba/b[ext=mp4]/b",
+                        # Instagram specific format
+                        "format": "best[ext=mp4]/best" if is_instagram else "bv*+ba/b[ext=mp4]/b",
                         "merge_output_format": "mp4",
                         "quiet": False,
                         "no_warnings": False,
-                        # Instagram specific
-                        "instagram": {"check_all": True} if is_instagram else {},
                     }
 
                     with _ydl(ydl_video_opts) as ydl:
@@ -244,33 +240,40 @@ async def download_video_and_audio(url: str, chat_id: int, format_type: str = "b
             except Exception as e:
                 error_msg = str(e).lower()
 
-                # Instagram rate-limit specific handling
-                if is_instagram and "requested content is not available" in error_msg and "rate-limit" in error_msg:
+                # Instagram rate-limit va login required specific handling
+                if is_instagram and ("rate-limit reached" in error_msg or "login required" in error_msg):
                     if attempt == max_retries - 1:
-                        print(f"❌ Instagram rate-limit - maksimal retries tugadi")
+                        print(f"❌ Instagram rate-limit - maksimal retries tugadi (attempt {attempt+1}/{max_retries})")
                         raise
-                    # Exponential backoff: 5s, 15s, 30s, 60s, 120s
-                    wait_times = [5, 15, 30, 60, 120]
+                    # AGGRESSIVE exponential backoff: 5s, 15s, 30s, 60s, 120s, 180s, 300s
+                    wait_times = [5, 15, 30, 60, 120, 180, 300, 600]
                     wait_time = wait_times[min(attempt, len(wait_times)-1)]
-                    print(f"⏳ Instagram rate-limit detected. Waiting {wait_time}s (attempt {attempt+1}/{max_retries})...")
+                    print(f"⏳ Instagram: Rate-limit/Login required. Waiting {wait_time}s (attempt {attempt+1}/{max_retries})...")
                     await asyncio.sleep(wait_time)
                     continue
 
-                # Instagram specific - CSRF token va metadata xatolarini ignore qilish
-                if is_instagram and any(err in error_msg for err in ["csrf token", "no data", "general metadata", "unable to extract"]):
+                # Instagram CSRF va metadata warnings -> IGNORE, continue retry
+                if is_instagram and any(warn in error_msg for warn in [
+                    "csrf token",
+                    "no data",
+                    "general metadata",
+                    "unable to extract",
+                    "main webpage is locked",
+                    "unplayable formats"
+                ]):
                     if attempt < max_retries - 1:
-                        print(f"⚠️ Instagram metadata warning (retry): {error_msg[:80]}")
+                        print(f"⚠️ Instagram warning (ignoring): {error_msg[:100]}")
                         await asyncio.sleep(2)
                         continue
                     else:
                         raise
 
-                # Rate-limit va bot detection uchun smart retry
+                # Generic rate-limit va bot detection
                 if "rate-limit" in error_msg or "sign in to confirm" in error_msg:
                     if attempt == max_retries - 1:
                         raise
                     wait_time = (attempt + 1) * 5
-                    print(f"⏳ Rate limit/Bot detection. Waiting {wait_time}s before retry...")
+                    print(f"⏳ Rate limit/Bot detection. Waiting {wait_time}s...")
                     await asyncio.sleep(wait_time)
                 elif attempt == max_retries - 1:
                     raise
