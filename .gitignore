@@ -1,0 +1,23 @@
+# Development fayllar
+.gitignore
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+*.egg-info/
+.env
+.env.local
+*.log
+data/
+logs/
+venv/
+.DS_Store
+*.swp
+*.swo
+*~
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+

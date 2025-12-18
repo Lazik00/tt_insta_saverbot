@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: media_downloader_bot
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - DATA_DIR=/app/data
+      - MAX_UPLOAD_BYTES=2097152000
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: always
+    networks:
+      - bot-network
+
+networks:
+  bot-network:
+    driver: bridge
+
